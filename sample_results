@@ -1,0 +1,72 @@
+mr_check.py
+Enter Base RA VPN CNAME (example: XXXXX.vpn.sse.cisco.com): XXXXXX.vpn.sse.cisco.com
+Enter the number of cycles to run per target: 100
+
+DNS Server to check against
+Press Enter with no response to use: System Default DNS
+Examples:
+  208.67.222.222 (OpenDNS)
+  1.1.1.1 (Cloudflare)
+  8.8.8.8 (Google)
+  9.9.9.9 (QuadDNS)
+Enter DNS Server to check against: 
+
+Detailed log written to: vpn_redirect_logs/vpn_redirect_detail_20260326_103540.log
+Summary JSON written to: vpn_redirect_logs/vpn_redirect_summary_20260326_103540.json
+Summary text written to: vpn_redirect_logs/vpn_redirect_summary_20260326_103540.txt
+
+TARGET: Auto Select Option
+  Count: 100
+    Status: ok
+    Redirect URL: https://dd018-XXXXX.vpn.sse.cisco.com/
+    Hostname: dd018-XXXXX.vpn.sse.cisco.com
+    DNS Server to check against: System Default DNS
+    IPs: 151.186.81.123
+    DCv2 Geo-proximity check: MIA2.EDC
+    Auto Select matched region: us-east-1
+
+TARGET: us-west-1
+  Count: 100
+    Status: ok
+    Redirect URL: https://dc038-XXXXX.vpn.sse.cisco.com/
+    Hostname: dc038-XXXXX.vpn.sse.cisco.com
+    DNS Server to check against: System Default DNS
+    IPs: 151.186.93.103
+    DCv2 Geo-proximity check: LAX2.EDC
+
+TARGET: us-west-2
+  Count: 50
+    Status: ok
+    Redirect URL: https://entry35-XXXXX.vpn.sse.cisco.com/
+    Hostname: entry35-XXXXX.vpn.sse.cisco.com
+    DNS Server to check against: System Default DNS
+    IPs: 52.27.214.147
+  Count: 50
+    Status: ok
+    Redirect URL: https://da027-XXXXX.vpn.sse.cisco.com/
+    Hostname: da027-XXXXX.vpn.sse.cisco.com
+    DNS Server to check against: System Default DNS
+    IPs: 54.185.196.170
+
+TARGET: us-east-1
+  Count: 100
+    Status: ok
+    Redirect URL: https://dd018-XXXXX.vpn.sse.cisco.com/
+    Hostname: dd018-XXXXX.vpn.sse.cisco.com
+    DNS Server to check against: System Default DNS
+    IPs: 151.186.81.123
+    DCv2 Geo-proximity check: MIA2.EDC
+
+TARGET: us-east-2
+  Count: 51
+    Status: ok
+    Redirect URL: https://entry24-XXXXX.vpn.sse.cisco.com/
+    Hostname: entry24-XXXXX.vpn.sse.cisco.com
+    DNS Server to check against: System Default DNS
+    IPs: 18.220.150.227
+  Count: 49
+    Status: ok
+    Redirect URL: https://entry29-XXXXX.vpn.sse.cisco.com/
+    Hostname: entry29-XXXXX.vpn.sse.cisco.com
+    DNS Server to check against: System Default DNS
+    IPs: 18.189.102.225
