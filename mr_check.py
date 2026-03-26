@@ -4,23 +4,29 @@ vpn_redirect_tracker.py
 
 Purpose:
 - Prompt the user for a Base RA VPN CNAME, for example:
-    XXXXXX.vpn.sse.cisco.com
-- Build region URLs automatically:
-    https://us-west-1-<cname>
-    https://us-west-2-<cname>
-    https://us-east-1-<cname>
-    https://us-east-2-<cname>
+    7d4424.vpn.sse.cisco.com
+- Build test targets automatically:
+  - Auto Select Option:
+      https://<cname>
+  - Region-specific:
+      https://us-west-1-<cname>
+      https://us-west-2-<cname>
+      https://us-east-1-<cname>
+      https://us-east-2-<cname>
 - Prompt the user for a DNS server to check against
   - Blank input uses System Default DNS
   - If an IP is provided, nslookup uses that DNS server
-- For each region URL:
+- For each target:
   - Run curl
   - Parse redirect URL from the response headers
   - Extract the DNS hostname from the redirect URL
   - Run nslookup on that hostname
   - Capture returned IP address(es), excluding the DNS server IP
   - If an IP matches a known DCv2 prefix, add a geo-proximity label
-- Repeat for the user-specified number of cycles per region
+- Repeat for the user-specified number of cycles per target
+- Include Auto Select Option as the first target returned
+- Compare Auto Select results against region-specific results and, when possible,
+  identify which specific region Auto Select chose
 - Write a detailed log
 - Print a summary to the console
 """
@@ -46,6 +52,7 @@ REGION_PREFIXES = [
     "us-east-2-",
 ]
 
+AUTO_SELECT_LABEL = "Auto Select Option"
 SLEEP_SECONDS = 1
 LOG_DIR = Path("./vpn_redirect_logs")
 
@@ -54,7 +61,7 @@ def get_base_ra_vpn_cname() -> str:
     """Prompt for the base RA VPN CNAME and normalize input."""
     while True:
         cname = input(
-            "Enter Base RA VPN CNAME (example: XXXXXX.vpn.sse.cisco.com): "
+            "Enter Base RA VPN CNAME (example: 7d4424.vpn.sse.cisco.com): "
         ).strip()
 
         if not cname:
@@ -71,15 +78,27 @@ def get_base_ra_vpn_cname() -> str:
         return cname
 
 
-def build_region_urls(base_cname: str) -> List[str]:
-    """Construct full HTTPS region URLs from the base CNAME."""
-    return [f"https://{prefix}{base_cname}" for prefix in REGION_PREFIXES]
+def build_targets(base_cname: str) -> List[Tuple[str, str]]:
+    """
+    Build ordered test targets.
+    Returns list of tuples: (label, url)
+    Auto Select Option is first.
+    """
+    targets: List[Tuple[str, str]] = [
+        (AUTO_SELECT_LABEL, f"https://{base_cname}")
+    ]
+
+    for prefix in REGION_PREFIXES:
+        region_label = prefix.rstrip("-")
+        targets.append((region_label, f"https://{prefix}{base_cname}"))
+
+    return targets
 
 
 def get_iteration_count() -> int:
-    """Prompt for the number of cycles to run per region."""
+    """Prompt for the number of cycles to run per target."""
     while True:
-        value = input("Enter the number of cycles to run per region: ").strip()
+        value = input("Enter the number of cycles to run per target: ").strip()
         try:
             iterations = int(value)
             if iterations <= 0:
@@ -113,7 +132,10 @@ def get_dns_server() -> Optional[str]:
             ipaddress.ip_address(value)
             return value
         except ValueError:
-            print("Invalid IP address. Enter a valid IPv4 or IPv6 address, or press Enter for System Default DNS.")
+            print(
+                "Invalid IP address. Enter a valid IPv4 or IPv6 address, "
+                "or press Enter for System Default DNS."
+            )
 
 
 def run_command(cmd: List[str], timeout: int = 20) -> Tuple[int, str, str]:
@@ -233,12 +255,83 @@ def now_str() -> str:
     return dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
+def make_result_record(
+    redirect_url: Optional[str],
+    hostname: Optional[str],
+    ips: List[str],
+    dcv2_geo: Optional[str],
+    dns_server_display: str,
+    status: str,
+    auto_select_region_match: Optional[str] = None,
+) -> Dict[str, object]:
+    return {
+        "redirect_url": redirect_url,
+        "hostname": hostname,
+        "ips": ips,
+        "dcv2_geo": dcv2_geo,
+        "dns_server": dns_server_display,
+        "status": status,
+        "auto_select_region_match": auto_select_region_match,
+    }
+
+
+def match_auto_select_to_region(
+    auto_entry: Dict[str, object],
+    region_entries: List[Tuple[str, Dict[str, object]]],
+) -> Optional[str]:
+    """
+    Identify which specific region was chosen for Auto Select by comparing
+    region-specific results to the Auto Select result.
+
+    Matching strategy:
+    1. redirect_url + hostname + ips
+    2. redirect_url + ips
+    3. hostname + ips
+    4. redirect_url only
+    5. hostname only
+    """
+    auto_redirect = auto_entry.get("redirect_url")
+    auto_hostname = auto_entry.get("hostname")
+    auto_ips = tuple(auto_entry.get("ips", []))
+
+    for region_label, region_entry in region_entries:
+        if (
+            region_entry.get("redirect_url") == auto_redirect
+            and region_entry.get("hostname") == auto_hostname
+            and tuple(region_entry.get("ips", [])) == auto_ips
+        ):
+            return region_label
+
+    for region_label, region_entry in region_entries:
+        if (
+            region_entry.get("redirect_url") == auto_redirect
+            and tuple(region_entry.get("ips", [])) == auto_ips
+        ):
+            return region_label
+
+    for region_label, region_entry in region_entries:
+        if (
+            region_entry.get("hostname") == auto_hostname
+            and tuple(region_entry.get("ips", [])) == auto_ips
+        ):
+            return region_label
+
+    for region_label, region_entry in region_entries:
+        if region_entry.get("redirect_url") == auto_redirect and auto_redirect is not None:
+            return region_label
+
+    for region_label, region_entry in region_entries:
+        if region_entry.get("hostname") == auto_hostname and auto_hostname is not None:
+            return region_label
+
+    return None
+
+
 def main() -> int:
     base_cname = get_base_ra_vpn_cname()
-    region_urls = build_region_urls(base_cname)
-    iterations_per_region = get_iteration_count()
+    targets = build_targets(base_cname)
+    iterations_per_target = get_iteration_count()
     dns_server = get_dns_server()
-
     dns_server_display = dns_server if dns_server else "System Default DNS"
 
     LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -249,43 +342,41 @@ def main() -> int:
     summary_txt_path = LOG_DIR / f"vpn_redirect_summary_{timestamp}.txt"
 
     counts: Dict[str, collections.Counter] = {
-        region: collections.Counter() for region in region_urls
+        label: collections.Counter() for label, _ in targets
     }
 
     with detail_log_path.open("w", encoding="utf-8") as detail_log:
         detail_log.write(f"Start time: {now_str()}\n")
         detail_log.write(f"Base RA VPN CNAME: {base_cname}\n")
-        detail_log.write(f"Iterations per region: {iterations_per_region}\n")
+        detail_log.write(f"Iterations per target: {iterations_per_target}\n")
         detail_log.write(f"DNS Server to check against: {dns_server_display}\n")
         detail_log.write("=" * 80 + "\n\n")
 
-        for region_url in region_urls:
-            detail_log.write(f"REGION: {region_url}\n")
+        for label, target_url in targets:
+            detail_log.write(f"TARGET: {label}\n")
+            detail_log.write(f"URL: {target_url}\n")
             detail_log.write("-" * 80 + "\n")
 
-            for i in range(1, iterations_per_region + 1):
+            for i in range(1, iterations_per_target + 1):
                 iteration_time = now_str()
-                detail_log.write(f"[{iteration_time}] Iteration {i}/{iterations_per_region}\n")
+                detail_log.write(f"[{iteration_time}] Iteration {i}/{iterations_per_target}\n")
 
-                redirect_url, curl_raw = curl_for_redirect(region_url)
+                redirect_url, curl_raw = curl_for_redirect(target_url)
                 detail_log.write("CURL OUTPUT:\n")
                 detail_log.write(curl_raw + "\n")
 
                 if not redirect_url:
                     detail_log.write("RESULT: No redirect URL found.\n")
                     detail_log.write("-" * 80 + "\n")
-                    key = json.dumps(
-                        {
-                            "redirect_url": None,
-                            "hostname": None,
-                            "ips": [],
-                            "dcv2_geo": None,
-                            "dns_server": dns_server_display,
-                            "status": "no_redirect",
-                        },
-                        sort_keys=True,
+                    record = make_result_record(
+                        redirect_url=None,
+                        hostname=None,
+                        ips=[],
+                        dcv2_geo=None,
+                        dns_server_display=dns_server_display,
+                        status="no_redirect",
                     )
-                    counts[region_url][key] += 1
+                    counts[label][json.dumps(record, sort_keys=True)] += 1
                     time.sleep(SLEEP_SECONDS)
                     continue
 
@@ -296,18 +387,15 @@ def main() -> int:
                 if not hostname:
                     detail_log.write("RESULT: Could not parse hostname from redirect URL.\n")
                     detail_log.write("-" * 80 + "\n")
-                    key = json.dumps(
-                        {
-                            "redirect_url": redirect_url,
-                            "hostname": None,
-                            "ips": [],
-                            "dcv2_geo": None,
-                            "dns_server": dns_server_display,
-                            "status": "bad_hostname",
-                        },
-                        sort_keys=True,
+                    record = make_result_record(
+                        redirect_url=redirect_url,
+                        hostname=None,
+                        ips=[],
+                        dcv2_geo=None,
+                        dns_server_display=dns_server_display,
+                        status="bad_hostname",
                     )
-                    counts[region_url][key] += 1
+                    counts[label][json.dumps(record, sort_keys=True)] += 1
                     time.sleep(SLEEP_SECONDS)
                     continue
 
@@ -320,18 +408,15 @@ def main() -> int:
                 if dcv2_geo:
                     detail_log.write(f"DCv2 Geo-proximity check: {dcv2_geo}\n")
 
-                key = json.dumps(
-                    {
-                        "redirect_url": redirect_url,
-                        "hostname": hostname,
-                        "ips": ips,
-                        "dcv2_geo": dcv2_geo,
-                        "dns_server": dns_server_display,
-                        "status": "ok" if ips else "no_ip",
-                    },
-                    sort_keys=True,
+                record = make_result_record(
+                    redirect_url=redirect_url,
+                    hostname=hostname,
+                    ips=ips,
+                    dcv2_geo=dcv2_geo,
+                    dns_server_display=dns_server_display,
+                    status="ok" if ips else "no_ip",
                 )
-                counts[region_url][key] += 1
+                counts[label][json.dumps(record, sort_keys=True)] += 1
 
                 detail_log.write("-" * 80 + "\n")
                 time.sleep(SLEEP_SECONDS)
@@ -344,18 +429,30 @@ def main() -> int:
     summary_data = {
         "generated_at": now_str(),
         "base_ra_vpn_cname": base_cname,
-        "iterations_per_region": iterations_per_region,
+        "iterations_per_target": iterations_per_target,
         "dns_server_to_check_against": dns_server_display,
-        "regions": {},
+        "targets": {},
     }
 
-    for region_url, counter in counts.items():
-        region_entries = []
-        for key, count in counter.most_common():
+    for label, _ in targets:
+        entries = []
+        for key, count in counts[label].most_common():
             parsed = json.loads(key)
             parsed["count"] = count
-            region_entries.append(parsed)
-        summary_data["regions"][region_url] = region_entries
+            entries.append(parsed)
+        summary_data["targets"][label] = entries
+
+    region_labels = [label for label, _ in targets if label != AUTO_SELECT_LABEL]
+    region_lookup: List[Tuple[str, Dict[str, object]]] = []
+
+    for region_label in region_labels:
+        for entry in summary_data["targets"].get(region_label, []):
+            region_lookup.append((region_label, entry))
+
+    auto_entries = summary_data["targets"].get(AUTO_SELECT_LABEL, [])
+    for entry in auto_entries:
+        matched_region = match_auto_select_to_region(entry, region_lookup)
+        entry["auto_select_region_match"] = matched_region
 
     with summary_json_path.open("w", encoding="utf-8") as f:
         json.dump(summary_data, f, indent=2)
@@ -363,12 +460,13 @@ def main() -> int:
     with summary_txt_path.open("w", encoding="utf-8") as f:
         f.write(f"Generated at: {summary_data['generated_at']}\n")
         f.write(f"Base RA VPN CNAME: {summary_data['base_ra_vpn_cname']}\n")
-        f.write(f"Iterations per region: {iterations_per_region}\n")
+        f.write(f"Iterations per target: {iterations_per_target}\n")
         f.write(f"DNS Server to check against: {dns_server_display}\n")
         f.write("=" * 80 + "\n\n")
 
-        for region_url, entries in summary_data["regions"].items():
-            f.write(f"REGION: {region_url}\n")
+        for label, _ in targets:
+            entries = summary_data["targets"].get(label, [])
+            f.write(f"TARGET: {label}\n")
             f.write("-" * 80 + "\n")
             if not entries:
                 f.write("No results.\n\n")
@@ -383,6 +481,8 @@ def main() -> int:
                 f.write(f"IPs          : {', '.join(entry['ips']) if entry['ips'] else 'None'}\n")
                 if entry.get("dcv2_geo"):
                     f.write(f"DCv2 Geo-proximity check: {entry['dcv2_geo']}\n")
+                if label == AUTO_SELECT_LABEL and entry.get("auto_select_region_match"):
+                    f.write(f"Auto Select matched region: {entry['auto_select_region_match']}\n")
                 f.write("-" * 40 + "\n")
             f.write("\n")
 
@@ -391,8 +491,9 @@ def main() -> int:
     print(f"Summary text written to: {summary_txt_path}")
     print()
 
-    for region_url, entries in summary_data["regions"].items():
-        print(f"REGION: {region_url}")
+    for label, _ in targets:
+        entries = summary_data["targets"].get(label, [])
+        print(f"TARGET: {label}")
         if not entries:
             print("  No results")
             continue
@@ -407,6 +508,8 @@ def main() -> int:
             print(f"    IPs: {ips_display}")
             if entry.get("dcv2_geo"):
                 print(f"    DCv2 Geo-proximity check: {entry['dcv2_geo']}")
+            if label == AUTO_SELECT_LABEL and entry.get("auto_select_region_match"):
+                print(f"    Auto Select matched region: {entry['auto_select_region_match']}")
         print()
 
     return 0
