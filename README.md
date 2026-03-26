@@ -7,3 +7,8 @@ This python script will:
 - The main CNAME for "Auto Select" will also be tested.
 
 It is advisable to test against different public DNS servers, as geo-proximity uses the DNS server's location and can be variable based on the DNS service provider.
+
+To run:
+
+chmod +x mr_check.py
+python3 mr_check.py
