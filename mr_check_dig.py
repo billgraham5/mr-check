@@ -4,7 +4,7 @@ mr_check.py
 
 Purpose:
 - Prompt the user for a Base RA VPN CNAME, for example:
-    7d4424.vpn.sse.cisco.com
+    XXXXXX.vpn.sse.cisco.com
 - Build test targets automatically:
   - Auto Select Option:
       https://<cname>
@@ -61,7 +61,7 @@ def get_base_ra_vpn_cname() -> str:
     """Prompt for the base RA VPN CNAME and normalize input."""
     while True:
         cname = input(
-            "Enter Base RA VPN CNAME (example: 7d4424.vpn.sse.cisco.com): "
+            "Enter Base RA VPN CNAME (example: XXXXXX.vpn.sse.cisco.com): "
         ).strip()
 
         if not cname:
