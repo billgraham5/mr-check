@@ -15,3 +15,5 @@ To run:
 chmod +x mr_check.py
 
 python3 mr_check.py
+
+The default script (mr_check.py) uses nslookup from the client operating system.   There is also a _dig version for operating systems that prefer dig.
