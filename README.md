@@ -13,4 +13,5 @@ For the AWS regions, verification of the location is not enabled in the script b
 To run:
 
 chmod +x mr_check.py
+
 python3 mr_check.py
