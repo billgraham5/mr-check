@@ -54,7 +54,7 @@ def get_base_ra_vpn_cname() -> str:
     """Prompt for the base RA VPN CNAME and normalize input."""
     while True:
         cname = input(
-            "Enter Base RA VPN CNAME (example: 7d4424.vpn.sse.cisco.com): "
+            "Enter Base RA VPN CNAME (example: XXXXXX.vpn.sse.cisco.com): "
         ).strip()
 
         if not cname:
