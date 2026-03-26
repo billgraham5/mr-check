@@ -1,3 +1,5 @@
+! note that tenant URL has been replaced with XXXXX.
+
 mr_check.py
 Enter Base RA VPN CNAME (example: XXXXX.vpn.sse.cisco.com): XXXXXX.vpn.sse.cisco.com
 Enter the number of cycles to run per target: 100
